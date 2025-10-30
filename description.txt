@@ -1,0 +1,11 @@
+[i/8] AutoTorch+
+
+This mod automatically places torches from your inventory at configurable intervals. Has some nice features:
+
+- Configurable placement radius around the character
+- Configurable distance between torches
+- A "smart placement" mode that accounts for tiles inbetween torches (toggle-able)
+- Automatic placement of biome torches instead of normal ones (toggle-able)
+- A toggle hotkey for turning the automatic torch placement on/off
+- Torch placement respects the on/off state of Torch God's Favor, meaning regular torches will be converted to biome torches.
+- Includes a setting that will automatically replace existing torches with the right biome torches if they are available, or if Torch God's Favor is enabled.

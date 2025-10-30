@@ -1,0 +1,3 @@
+displayName = AutoTorch+
+author = pagedMov
+version = 0.2.8

@@ -1,0 +1,20 @@
+[h1]AutoTorch+[/h1]
+
+This mod automatically places torches from your inventory at configurable intervals. Has some nice features:
+
+[*] Configurable placement radius around the character
+[*] Configurable distance between torches
+[*] A "smart placement" mode that accounts for solid walls inbetween torches (toggle-able)
+[*] Automatic placement of biome torches instead of normal ones (toggle-able)
+[*] A toggle hotkey for turning the automatic torch placement on/off
+[*] Torch placement respects the on/off state of Torch God's Favor, meaning regular torches will be converted to biome torches.
+[*] Includes a setting that will automatically replace existing torches with the right biome torches if they are available, or if Torch God's Favor is enabled.
+
+Notes:
+The mod checks for two things to find a good place to put a torch:
+1. The player must be able to see the tile
+2. There must not be any torches within the configured range of tiles (default is 12)
+
+Enabling smart placement alters the second check. Instead of checking for any torches at all within that range, it checks for torches that have line of sight to the spot being checked. Essentially, torches that are behind walls will not count for the distance check, because they are not lighting up that area. This has the effect of using slightly more torches but ending up with full light coverage.
+
+Also, when checking for torches, it will check for any light source, not just torches. This prevents the mod from spamming your base with torches if you used candles and chandeliers everywhere. This also has the effect of conserving torches in places that are already well lit, like Glowing Mushroom Biomes for instance.

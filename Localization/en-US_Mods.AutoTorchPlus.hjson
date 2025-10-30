@@ -1,0 +1,37 @@
+Keybinds.ToggleAutoTorch.DisplayName: Toggle AutoTorch
+
+Configs: {
+	AutoTorchConfig: {
+		DisplayName: AutoTorch+ Config
+
+		SearchRadius: {
+			Label: Torch Placement Search Radius
+			Tooltip: The tile radius around the player that AutoTorch will search for places to put torches.
+		}
+
+		TorchSpacing: {
+			Label: Torch Spacing
+			Tooltip: The minimum distance between two torches.
+		}
+
+		UseSmartPlacement: {
+			Label: Use Smart Placement
+			Tooltip: If enabled, AutoTorch+ will not consider torches that are behind walls when checking for torch spacing.
+		}
+
+		SilentPlacement: {
+			Label: Silent Placement
+			Tooltip: Disables the sound of placing the torches.
+		}
+
+		PreferBiomeTorches: {
+			Label: Prefer Biome Torches
+			Tooltip: AutoTorch+ will prefer to use the torch of the current biome if it is in your inventory, or if Torch God's Favor is unlocked and enabled.
+		}
+
+		UpgradeNonBiomeTorches: {
+			Label: Upgrade Non-Biome Torches
+			Tooltip: If enabled, AutoTorch+ will upgrade "wrong" torches if Torch God's Favor is enabled, or the "right" biome torches are in your inventory.
+		}
+	}
+}

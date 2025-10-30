@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "ZMdcBbQCjbo=",
+  "success": true,
+  "projectFilePath": "/home/pagedmov/.local/share/Terraria/tModLoader/ModSources/AutoTorchPlus/AutoTorchPlus.csproj",
+  "expectedPackageFiles": [
+    "/home/pagedmov/.nuget/packages/microsoft.netcore.app.ref/8.0.20/microsoft.netcore.app.ref.8.0.20.nupkg.sha512",
+    "/home/pagedmov/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.20/microsoft.aspnetcore.app.ref.8.0.20.nupkg.sha512"
+  ],
+  "logs": []
+}
