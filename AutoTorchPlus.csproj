@@ -5,12 +5,14 @@
 
 	<!-- General -->
 	<PropertyGroup>
-		
+
 	</PropertyGroup>
 
 	<!-- References -->
 	<ItemGroup>
-		
+		<Reference Include="AlgoLib">
+			<HintPath>/home/pagedmov/.local/share/Terraria/tModLoader/ModReader/AlgoLib/AlgoLib.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 </Project>

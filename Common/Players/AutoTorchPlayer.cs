@@ -6,6 +6,8 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using System;
 using System.Numerics;
+using Microsoft.Xna.Framework.Graphics;
+using Terraria.GameContent;
 
 namespace AutoTorchPlus.Common.Players {
 	public class BiomeID {
@@ -37,20 +39,45 @@ namespace AutoTorchPlus.Common.Players {
 		};
 	}
 
-	public class AutoTorchPlayer : ModPlayer {
-		private bool AutoTorchEnabled = true;
-		// Radius 1 is the radius in tiles around the player to search for valid torch spots
-		private int AutoTorchRadius1 = 6;
-		// Radius 2 is the radius in tiles around potential valid torch spots to look for existing torches
-		private int AutoTorchRadius2 = 12;
-		private bool MuteTilePlacement = false;
-		private bool UseSmartPlacement = true;
-		private int TorchCheckInterval = 20;
-		private Dictionary<(int,int),bool> tileCache = new();
-		private bool UseBiomeTorches = true;
-		private bool ReplaceTorches = false;
+	public class AutoTorchDebug : ModSystem {
+		public override void PostDrawTiles() {
+			bool debugEnabled = ModContent.GetInstance<AutoTorchConfig>().ShowDebugInfo;
+			if (!debugEnabled) return;
 
-		private bool PlayerNearPylon = false;
+			var player = Main.LocalPlayer.GetModPlayer<AutoTorchPlayer>();
+
+			Texture2D pixel = TextureAssets.MagicPixel.Value;
+			SpriteBatch spriteBatch = Main.spriteBatch;
+
+			spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+
+			foreach (var (x, y) in player.debugTiles1) {
+				Microsoft.Xna.Framework.Vector2 screenPos = new Microsoft.Xna.Framework.Vector2(x * 16 - Main.screenPosition.X, y * 16 - Main.screenPosition.Y);
+				Rectangle rect = new Rectangle((int)screenPos.X, (int)screenPos.Y, 16, 16);
+				spriteBatch.Draw(pixel, rect, Color.White * 0.5f);
+			}
+
+			spriteBatch.End();
+		}
+	}
+
+	public class AutoTorchPlayer : ModPlayer {
+		public bool AutoTorchEnabled = true;
+		// Radius 1 is the radius in tiles around the player to search for valid torch spots
+		public int AutoTorchRadius1 = 6;
+		// Radius 2 is the radius in tiles around potential valid torch spots to look for existing torches
+		public int AutoTorchRadius2 = 12;
+		public bool MuteTilePlacement = false;
+		public bool UseSmartPlacement = true;
+		public int TorchCheckInterval = 20;
+		public Dictionary<(int,int),bool> tileCache = new();
+		public bool UseBiomeTorches = true;
+		public bool ReplaceTorches = false;
+
+		public List<(int x, int y)> debugTiles1 = new();
+		public List<(int x, int y)> debugTiles2 = new();
+
+		public bool PlayerNearPylon = false;
 
 		private const uint TORCH = 1;
 		private const uint BLUE_TORCH = 1 << 1;
@@ -156,6 +183,15 @@ namespace AutoTorchPlus.Common.Players {
 		public override void ProcessTriggers(Terraria.GameInput.TriggersSet triggersSet) {
 			if (AutoTorchHotkey.ToggleAutoTorch.JustPressed) {
 				AutoTorchEnabled = !AutoTorchEnabled;
+
+				if (Main.netMode == NetmodeID.MultiplayerClient) {
+					var packet = Mod.GetPacket();
+					packet.Write((byte)PacketType.SyncEnabled);
+					packet.Write((byte)Player.whoAmI);
+					packet.Write(AutoTorchEnabled);
+					packet.Send();
+				}
+
 				string status = AutoTorchEnabled ? "enabled" : "disabled";
 				Main.NewText($"Auto Torch {status}.", 50, 255, 130);
 			}
@@ -181,6 +217,9 @@ namespace AutoTorchPlus.Common.Players {
 				if (Main.netMode == NetmodeID.MultiplayerClient) {
 					NetMessage.SendData(MessageID.TileManipulation, -1, -1, null, 0, tileX, tileY);
 				}
+			} else if (hasTorch) {
+				// We already have the right torch here
+				return false;
 			}
 
 			if (!hasTorch && (tile.HasTile && !Main.tileCut[tile.TileType])) return false;
@@ -446,48 +485,143 @@ namespace AutoTorchPlus.Common.Players {
 			return (torchType, torchType);
 		}
 
+		private bool BlocksFlood(Tile tile) => tile.HasTile && Main.tileSolid[tile.TileType] && Main.tileBlockLight[tile.TileType];
+
+		private bool BfsFloodCheck(int sx, int sy) {
+			PriorityQueue<(int x, int y, int steps), int> queue = new();
+			HashSet<(int x,int y)> visited = new();
+
+			queue.Enqueue((sx,sy, 0), 0);
+
+			while (queue.Count > 0) {
+				var (x, y, steps) = queue.Dequeue();
+				if (!visited.Add((x,y))) continue;
+
+				bool hasLightSource = false;
+
+				hasLightSource = HasLightSource(x,y);
+
+				if (hasLightSource) {
+					int straightLine = Math.Abs(x - sx) + Math.Abs(y - sy);
+					int pathDeviation = steps - straightLine;
+
+					if (pathDeviation <= 4) return true;
+					continue;
+				}
+
+				(int nx, int ny)[] neighbors = [
+					(x + 1, y),
+					(x - 1, y),
+					(x, y + 1),
+					(x, y - 1)
+				];
+
+				foreach (var (nx, ny) in neighbors) {
+					if (!WorldGen.InWorld(nx, ny)) continue;
+
+					Tile tile = Main.tile[nx, ny];
+					if (BlocksFlood(tile)) continue;
+					int distance = Math.Abs(nx - sx) + Math.Abs(ny - sy);
+					if (distance >= AutoTorchRadius2) continue;
+					queue.Enqueue((nx,ny, steps + 1), distance);
+				}
+			}
+			return false;
+		}
+
+		private List<(int x, int y)> InitCheckTiles(int sx, int sy, int maxDist) {
+			PriorityQueue<(int x, int y), int> queue = new();
+			HashSet<(int x,int y)> visited = new();
+			List<(int x, int y)> checkTiles = new();
+
+			queue.Enqueue((sx,sy), 0);
+
+			while (queue.Count > 0) {
+				var (x, y) = queue.Dequeue();
+				if (!visited.Add((x,y))) continue;
+
+				int distance = Math.Abs(x - sx) + Math.Abs(y - sy);
+				if (distance >= maxDist) continue;
+
+				checkTiles.Add((x,y));
+
+				(int nx, int ny)[] neighbors = [
+					(x + 1, y),
+					(x - 1, y),
+					(x, y + 1),
+					(x, y - 1)
+				];
+
+				foreach (var (nx, ny) in neighbors) {
+					if (!WorldGen.InWorld(nx, ny)) continue;
+
+					if (BlocksFlood(Main.tile[nx, ny])) continue;
+
+					int nextDist = Math.Abs(nx - sx) + Math.Abs(ny - sy);
+
+					queue.Enqueue((nx,ny),nextDist);
+				}
+			}
+
+			return checkTiles;
+		}
+
+		private bool CanPlaceTorchAt(int x, int y) {
+			if (!WorldGen.InWorld(x, y)) return false;
+			Tile tile = Main.tile[x, y];
+			Tile[] neighbors = [
+				Main.tile[x - 1, y],
+				Main.tile[x + 1, y],
+				Main.tile[x, y + 1]
+			];
+			Func<Tile, bool> hasAttachPoint = tile => neighbors.Any(n => n.HasTile && Main.tileSolid[n.TileType]) || tile.WallType != 0;
+
+			bool isCuttable = Main.tileCut[tile.TileType] && hasAttachPoint(tile);
+			bool noTile = !tile.HasTile && hasAttachPoint(tile);
+
+			return noTile || isCuttable;
+		}
+
 		private void CheckAroundPlayer() {
 			int playerX = (int)(Player.position.X / 16);
 			int playerY = (int)(Player.position.Y / 16);
 
-			for (int x = -AutoTorchRadius1; x <= AutoTorchRadius1; x++) {
-				for (int y = -AutoTorchRadius1; y <= AutoTorchRadius1; y++) {
-					if ((x*x) + (y*y) > (AutoTorchRadius1*AutoTorchRadius1)) continue;
-					int x2 = playerX + x;
-					int y2 = playerY + y;
-					Tile candidate = Main.tile[x2, y2];
+			List<(int x, int y)> checkTiles = InitCheckTiles(playerX, playerY, AutoTorchRadius1);
+			debugTiles1 = checkTiles.ToList();
 
-					uint rightTorches = BIOME_TORCHES;
-					bool playerInForest = ((PLAYER_BIOMES & (1u << BiomeID.Forest)) != 0);
-					if (!playerInForest) rightTorches &= ~TORCH;
+			foreach (var (x2, y2) in checkTiles) {
+				Tile candidate = Main.tile[x2, y2];
 
-					bool candidateHasWrongTorch = candidate.HasTile
-						&& candidate.TileType == TileID.Torches
-						&& UseBiomeTorches
-						&& ReplaceTorches
-						&& ((rightTorches & (1u << (candidate.TileFrameY / 22))) == 0);
+				uint rightTorches = BIOME_TORCHES;
+				bool playerInForest = ((PLAYER_BIOMES & (1u << BiomeID.Forest)) != 0);
+				if (!playerInForest) rightTorches &= ~TORCH;
 
-					bool noLightsNearby = !CheckAroundTile(x2, y2);
+				bool candidateHasWrongTorch = candidate.HasTile
+					&& candidate.TileType == TileID.Torches
+					&& UseBiomeTorches
+					&& ReplaceTorches
+					&& ((rightTorches & (1u << (candidate.TileFrameY / 22))) == 0);
 
-					if (candidateHasWrongTorch || !noLightsNearby) {
-					}
+				bool noLightsNearby = false;
+				if (UseSmartPlacement) {
+					// Use BFS flood fill to check for nearby light sources
+					noLightsNearby = !BfsFloodCheck(x2, y2);
+				} else {
+					// Use simple radius check for nearby light sources
+					noLightsNearby = !CheckAroundTile(x2, y2);
+				}
 
-					if (candidateHasWrongTorch || noLightsNearby) {
-						int depth = 1;
-						if (candidateHasWrongTorch) depth++;
-						if (!HasLineOfSight(playerX, playerY, (playerX + x), (playerY + y), maxDepth: depth)) {
-							continue;
-						}
-						Tile tile = Main.tile[x2, y2];
-						bool isUnderwater = tile.LiquidAmount > 0;
+				if (candidateHasWrongTorch || noLightsNearby) {
+					if (!CanPlaceTorchAt(x2,y2) && !candidateHasWrongTorch) continue;
 
-						var (usedTorch, placedTorch) = GetTorches(isUnderwater);
-						if (usedTorch == -1 || placedTorch == -1) continue;
+					bool isUnderwater = candidate.LiquidAmount > 0;
 
-						if (TryPlaceTorch(x2, y2, usedTorch, placedTorch)) {
-							Player.ConsumeItem(usedTorch);
-							return;
-						}
+					var (usedTorch, placedTorch) = GetTorches(isUnderwater);
+					if (usedTorch == -1 || placedTorch == -1) continue;
+
+					if (TryPlaceTorch(x2, y2, usedTorch, placedTorch)) {
+						Player.ConsumeItem(usedTorch);
+						return;
 					}
 				}
 			}
@@ -511,7 +645,6 @@ namespace AutoTorchPlus.Common.Players {
 			// if the player is underground and not near a pylon, we don't care about light sources
 			// however, if we are in a glowing mushroom biome, those places are generally well lit, so we can reasonably check for light sources
 			// to conserve torches. In this case, the light sources would be the glowing mushroom grass
-			// The dungeon also has some naturally occuring light sources
 			bool playerIsUnderground = !Player.ZoneOverworldHeight;
 			bool playerNotNearPylon = !PlayerNearPylon;
 			bool playerNotInGlowshroom = !Player.ZoneGlowshroom;
@@ -556,16 +689,7 @@ namespace AutoTorchPlus.Common.Players {
 
 					if (hasLightSource) {
 						tileCache[(x2,y2)] = true;
-						if (!UseSmartPlacement) return true;
-
-						// If the player is on the surface, we skip the line-of-sight check between torches
-						// This is because the surface is largely flat, and the slight differences in height
-						// can cause the line of sight check to spam torches more than necessary
-						if (Player.ZoneOverworldHeight) return true;
-
-						int depth = GetSightlineDepth();
-						// If the existing torch can see this tile, it's already being lit up
-						if (HasLineOfSight(tileX, tileY, x2, y2, maxDepth: depth)) return true;
+						return true;
 					}
 				}
 			}
@@ -605,6 +729,11 @@ namespace AutoTorchPlus.Common.Players {
 		public override void PostUpdate() {
 			if (!AutoTorchEnabled) return;
 			if (Player.dead) return;
+
+			// Make sure that this only runs on the client side for the local player
+			if (Main.netMode == NetmodeID.Server) return;
+			if (Player.whoAmI != Main.myPlayer) return;
+
 			uint updateNum = Main.GameUpdateCount;
 			if (updateNum % TorchCheckInterval != 0) return;
 

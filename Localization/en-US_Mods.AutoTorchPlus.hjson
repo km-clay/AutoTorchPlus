@@ -33,5 +33,19 @@ Configs: {
 			Label: Upgrade Non-Biome Torches
 			Tooltip: If enabled, AutoTorch+ will upgrade "wrong" torches if Torch God's Favor is enabled, or the "right" biome torches are in your inventory.
 		}
+
+		ShowDebugInfo: {
+			Label: Show Debug Info
+			Tooltip: Displays the active search radius
+		}
+	}
+}
+
+Config: {
+	Headers: {
+		SearchBehavior: Search Behavior
+		BiomeTorches: Biome Torches
+		TorchPlacement: Torch Placement
+		Advanced: Advanced
 	}
 }
